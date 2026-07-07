@@ -1,0 +1,6 @@
+{
+  "name": "Pizza Solidária - Handebol Água Viva",
+  "description": "Plataforma web solidária para venda de pizzas artesanais em benefício do time de Handebol do Colégio Água Viva, com integração Google Sheets, Mercado Pago e painel em tempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
