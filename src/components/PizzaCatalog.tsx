@@ -13,7 +13,7 @@ export const PizzaCatalog: React.FC<PizzaCatalogProps> = ({ cart, onUpdateQuanti
   const [filter, setFilter] = useState<"ALL" | "SALGADA" | "DOCE">("ALL");
   const [addedAnimation, setAddedAnimation] = useState<{ [id: string]: boolean }>({});
 
-  const totalCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+  const totalCount = (Object.values(cart) as number[]).reduce((sum, qty) => sum + qty, 0);
 
   const filteredPizzas = PIZZAS_CATALOG.filter((p) => {
     if (filter === "ALL") return true;

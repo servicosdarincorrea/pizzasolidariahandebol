@@ -50,14 +50,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  const cartItems = Object.entries(cart)
+  const cartItems = (Object.entries(cart) as [string, any][])
     .filter(([_, qty]) => qty > 0)
     .map(([id, qty]) => {
       const pizza = pizzas.find((p) => p.id === id)!;
-      return { pizza, quantity: qty };
+      return { pizza, quantity: qty as number };
     });
 
-  const totalAmount = cartItems.reduce((acc, item) => acc + item.pizza.price * item.quantity, 0);
+  const totalAmount = cartItems.reduce((acc: number, item) => acc + item.pizza.price * item.quantity, 0);
 
   const formatPhone = (val: string) => {
     const cleaned = val.replace(/\D/g, "");

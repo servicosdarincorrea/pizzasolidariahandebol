@@ -220,7 +220,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
       setSyncStatus(`✅ Google Conectado (${email || "Autenticado"})!`);
       setTimeout(() => setSyncStatus(""), 4000);
     } catch (err: any) {
-      alert("Erro na conexão com o Google: " + (err.message || err));
+      console.error(err);
+      const isPopupBlocked = err?.code === "auth/popup-blocked" || String(err).includes("popup");
+      if (isPopupBlocked) {
+        alert(
+          "O pop-up de login foi bloqueado pelo seu navegador!\n\n" +
+          "Como este aplicativo está rodando dentro de uma pré-visualização (iframe), o navegador restringe janelas pop-up por segurança.\n\n" +
+          "Solução:\n" +
+          "1. Clique no botão de expandir (ícone com seta saindo de um quadrado) no canto superior direito para abrir o aplicativo em uma NOVA ABA.\n" +
+          "2. Lá na nova aba, tente conectar novamente e funcionará perfeitamente!"
+        );
+      } else {
+        alert(
+          "Erro na conexão com o Google: " + (err?.message || err) + "\n\n" +
+          "Dica: Abra o aplicativo em uma NOVA ABA clicando no botão do canto superior direito do painel para evitar restrições de iframe."
+        );
+      }
       setSyncStatus("");
     }
   };
@@ -644,6 +659,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                 <div className="text-xs text-gray-700">
                   <strong className="block text-black font-bold">Autenticação Oficial Google OAuth</strong>
                   Permissão segura apenas para criar e gerenciar planilhas desta aplicação.
+                  <span className="block mt-1 text-[11px] text-amber-700 font-semibold">
+                    ⚠️ Se o botão não abrir o login, clique no ícone de expandir no topo direito do painel para abrir o app em uma NOVA ABA e tente de novo.
+                  </span>
                 </div>
                 <button
                   type="button"

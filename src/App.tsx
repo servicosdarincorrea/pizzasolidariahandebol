@@ -78,8 +78,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const totalCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
-  const totalAmount = Object.entries(cart).reduce((sum, [id, qty]) => {
+  const totalCount = Object.values(cart).reduce((sum: number, qty: any) => sum + qty, 0);
+  const totalAmount = Object.entries(cart).reduce((sum: number, [id, qty]: [string, any]) => {
     const p = PIZZAS_CATALOG.find((item) => item.id === id);
     return sum + (p ? p.price * qty : 0);
   }, 0);

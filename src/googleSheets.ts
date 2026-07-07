@@ -87,7 +87,7 @@ export async function syncOrdersToSpreadsheet(accessToken: string, spreadsheetId
 
   const rows = orders.map((o) => {
     const itensSummary = o.items
-      .map((i) => `${i.quantity}x ${i.pizzaName}`)
+      .map((i) => `${i.quantity}x ${i.name}`)
       .join("; ");
 
     return [
