@@ -69,4 +69,9 @@ export interface IntegrationConfig {
   mercadoPagoAccessToken: string;
   mercadoPagoPublicKey: string;
   emailNotifySender: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
 }

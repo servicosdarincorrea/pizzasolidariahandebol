@@ -5,7 +5,7 @@ export const HeroBanner: React.FC = () => {
     <div className="bg-secondary-cyan border-brutal shadow-brutal rounded p-5 sm:p-7 mb-8 relative overflow-hidden">
       {/* Decorative logo accent */}
       <div className="absolute -right-4 -bottom-4 opacity-15 pointer-events-none">
-        <img src="/HAND_VIDA.png" alt="Hand Vida" className="w-48 h-48 sm:w-56 sm:h-56 object-contain" />
+        <img src="/HAND_VIDA.png" alt="Hand Vida" className="w-48 h-48 sm:w-56 sm:h-56 object-contain" referrerPolicy="no-referrer" />
       </div>
 
       <div className="relative z-10">
@@ -26,7 +26,7 @@ export const HeroBanner: React.FC = () => {
         <p className="text-black/90 font-medium text-sm sm:text-base leading-relaxed max-w-2xl mb-4">
           Saboreie uma pizza deliciosa e ajude nossos atletas a alcançarem novas competições.
           <strong className="block font-bold bg-white/60 px-2.5 py-1 mt-2.5 rounded border border-black/20 w-fit">
-            100% da renda revertida para o Handebol.
+            100% da renda será revertida para o time de Handebol HandVida, parceiro do Colégio.
           </strong>
         </p>
 

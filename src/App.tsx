@@ -24,7 +24,7 @@ export default function App() {
       const savedId = localStorage.getItem("handvida_last_order_id");
       if (savedId && !currentOrder) {
         try {
-          const res = await fetch(`/api/orders/${encodeURIComponent(savedId)}`);
+          const res = await fetch(`/api/orders/${encodeURIComponent(savedId)}?t=${Date.now()}`);
           if (res.ok) {
             const data = await res.json();
             if (data.order) setCurrentOrder(data.order);
@@ -41,7 +41,7 @@ export default function App() {
     setLookupError("");
     try {
       const formattedId = lookupId.trim().startsWith("#") ? lookupId.trim() : `#${lookupId.trim()}`;
-      const res = await fetch(`/api/orders/${encodeURIComponent(formattedId)}`);
+      const res = await fetch(`/api/orders/${encodeURIComponent(formattedId)}?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         if (data.order) {

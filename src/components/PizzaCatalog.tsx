@@ -70,6 +70,7 @@ export const PizzaCatalog: React.FC<PizzaCatalogProps> = ({ cart, onUpdateQuanti
                     src={pizza.image}
                     alt={pizza.name}
                     className="w-48 h-48 sm:w-52 sm:h-52 object-cover rounded-full border-4 border-black shadow-md hover:scale-105 transition-transform duration-300"
+                    referrerPolicy="no-referrer"
                   />
                 </div>
 

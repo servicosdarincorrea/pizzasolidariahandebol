@@ -211,12 +211,12 @@ export const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = (
       </div>
 
       {/* Side-by-side Order ID & Status boxes matching screenshot */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="bg-primary-deep text-white p-4 border-2 border-black shadow-brutal rounded flex flex-col items-center justify-center">
           <span className="font-mono font-bold text-xs tracking-wider uppercase text-gray-300">
             PEDIDO
           </span>
-          <span className="font-display font-black text-2xl tracking-tight">
+          <span className="font-display font-black text-xl sm:text-2xl tracking-tight break-all text-center">
             {order.id}
           </span>
         </div>
@@ -225,7 +225,7 @@ export const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = (
           <span className="font-mono font-bold text-xs tracking-wider uppercase text-gray-700">
             STATUS
           </span>
-          <span className="font-display font-black text-2xl tracking-tight uppercase">
+          <span className="font-display font-black text-xl sm:text-2xl tracking-tight uppercase break-all text-center">
             {order.status === "PAGO" ? "PAGO" : "AGUARDANDO"}
           </span>
         </div>
@@ -301,7 +301,7 @@ export const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = (
             </div>
             {order.studentName && (
               <div className="flex flex-col sm:flex-row sm:justify-between border-b border-gray-200 pb-1.5">
-                <strong className="text-black font-sans uppercase">Aluno / Vendedor:</strong> 
+                <strong className="text-black font-sans uppercase">NOME DO ALUNO:</strong> 
                 <span className="font-bold text-gray-900">{order.studentName}</span>
               </div>
             )}
@@ -330,23 +330,12 @@ export const OrderConfirmationScreen: React.FC<OrderConfirmationScreenProps> = (
             {getPixString()}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              onClick={handleCopyPix}
-              className="flex-1 bg-black text-white py-2.5 px-4 rounded font-mono font-bold text-xs uppercase border-2 border-black shadow-brutal-sm hover:bg-gray-800 transition-colors"
-            >
-              {copiedPix ? "✅ CÓDIGO COPIADO!" : "📋 COPIAR CÓDIGO PIX"}
-            </button>
-
-            {/* Simulation button to demonstrate immediate webhook validation */}
-            <button
-              onClick={handleSimulate}
-              disabled={simulating}
-              className="flex-1 bg-green-500 text-white py-2.5 px-4 rounded font-mono font-bold text-xs uppercase border-2 border-black shadow-brutal-sm hover:bg-green-600 transition-colors"
-            >
-              {simulating ? "Validando..." : "⚡ SIMULAR APROVAÇÃO PIX"}
-            </button>
-          </div>
+          <button
+            onClick={handleCopyPix}
+            className="w-full bg-black text-white py-3 px-4 rounded font-mono font-bold text-xs uppercase border-2 border-black shadow-brutal-sm hover:bg-gray-800 transition-colors"
+          >
+            {copiedPix ? "✅ CÓDIGO COPIADO!" : "📋 COPIAR CÓDIGO PIX"}
+          </button>
         </div>
       )}
 

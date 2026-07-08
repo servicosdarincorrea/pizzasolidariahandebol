@@ -2,11 +2,23 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
+import nodemailer from "nodemailer";
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Disable caching for dynamic API responses to ensure real-time updates
+app.use((req, res, next) => {
+  if (req.url.startsWith("/api/")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  }
+  next();
+});
 
 // Ensure data folder exists
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -42,19 +54,26 @@ function saveOrders(orders: any[]) {
 
 // Helper to load/save integration config
 function getConfig() {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-    }
-  } catch (e) {}
-  return {
+  const defaults = {
     googleSheetsWebhookUrl: "",
     googleSpreadsheetId: "1-exemplo-planilha-solidaria-handebol-2026",
     autoSyncEnabled: true,
     mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || "APP_USR-sandbox-test-key",
     mercadoPagoPublicKey: process.env.MERCADOPAGO_PUBLIC_KEY || "TEST-pub-key-123",
-    emailNotifySender: "notificacoes@handvida-aguaviva.com.br"
+    emailNotifySender: process.env.EMAIL_SENDER || "notificacoes@handvida-aguaviva.com.br",
+    smtpHost: process.env.SMTP_HOST || "smtp.gmail.com",
+    smtpPort: parseInt(process.env.SMTP_PORT || "465"),
+    smtpSecure: process.env.SMTP_SECURE === "true" || true,
+    smtpUser: process.env.SMTP_USER || "",
+    smtpPass: process.env.SMTP_PASS || ""
   };
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+      return { ...defaults, ...saved };
+    }
+  } catch (e) {}
+  return defaults;
 }
 
 function saveConfig(config: any) {
@@ -408,17 +427,134 @@ app.post("/api/webhooks/mercadopago", async (req, res) => {
 });
 
 // Notification simulation endpoint (Email & WhatsApp log)
-app.post("/api/notify/send", (req, res) => {
+app.post("/api/notify/send", async (req, res) => {
   const { orderId, type } = req.body;
   const orders = getOrders();
   const order = orders.find((o: any) => o.id === orderId);
 
   if (!order) return res.status(404).json({ error: "Pedido não encontrado" });
 
+  const config = getConfig();
+  let emailSent = false;
+  let emailError = "";
+
+  if (type === "email") {
+    const isSmtpConfigured = config.smtpUser && config.smtpPass;
+    if (isSmtpConfigured) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: config.smtpHost,
+          port: Number(config.smtpPort),
+          secure: config.smtpSecure,
+          auth: {
+            user: config.smtpUser,
+            pass: config.smtpPass
+          }
+        });
+
+        const itemsHtml = order.items.map((i: any) => `
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 10px; font-weight: bold; color: #0d2149;">${i.quantity}x</td>
+            <td style="padding: 10px; color: #333;">${i.name}</td>
+            <td style="padding: 10px; text-align: right; font-family: monospace; color: #0d2149; font-weight: bold;">R$ ${(i.price * i.quantity).toFixed(2).replace(".", ",")}</td>
+          </tr>
+        `).join("");
+
+        const statusLabel = order.status === "PAGO" ? "PAGO / CONFIRMADO" : "AGUARDANDO PAGAMENTO";
+        const statusColor = order.status === "PAGO" ? "#10B981" : "#F59E0B";
+
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #000; box-shadow: 5px 5px 0px #000; border-radius: 6px; overflow: hidden; background-color: #fff;">
+            <div style="background-color: #0d2149; color: #fff; padding: 25px; text-align: center;">
+              <h1 style="margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Colégio Água Viva</h1>
+              <p style="margin: 5px 0 0 0; font-size: 14px; color: #67e8f9; text-transform: uppercase; font-weight: bold;">Campanha Pizza Solidária Handebol</p>
+            </div>
+            
+            <div style="padding: 25px; color: #333; line-height: 1.6;">
+              <h2 style="margin-top: 0; color: #0d2149;">Pedido Confirmado com Sucesso!</h2>
+              <p>Olá, <strong>${order.customerName}</strong>! Obrigado por apoiar nossos atletas do time de Handebol <strong>HandVida</strong>. Sua ajuda é fundamental para que eles alcancem novas competições!</p>
+              
+              <div style="background-color: #f3f4f6; border-left: 4px solid #0d2149; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0; font-size: 12px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Código do Pedido</p>
+                <p style="margin: 0; font-size: 22px; font-weight: bold; color: #0d2149;">${order.id}</p>
+              </div>
+
+              <div style="background-color: ${statusColor}; color: #fff; padding: 10px 15px; border-radius: 4px; font-weight: bold; text-align: center; margin-bottom: 25px;">
+                Status do Pagamento: ${statusLabel}
+              </div>
+
+              <h3 style="border-bottom: 2px solid #0d2149; padding-bottom: 8px; color: #0d2149; margin-top: 30px;">Detalhes da Retirada</h3>
+              <table style="width: 100%; margin-bottom: 25px;">
+                <tr>
+                  <td style="padding: 5px 0; font-weight: bold; width: 120px;">Data:</td>
+                  <td style="padding: 5px 0;">21 de Agosto (Quinta-feira)</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; font-weight: bold;">Horário:</td>
+                  <td style="padding: 5px 0;">Das 14h às 17h</td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; font-weight: bold;">Local:</td>
+                  <td style="padding: 5px 0;">Colégio Água Viva</td>
+                </tr>
+              </table>
+
+              <h3 style="border-bottom: 2px solid #0d2149; padding-bottom: 8px; color: #0d2149;">Resumo do Pedido</h3>
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+                <thead>
+                  <tr style="background-color: #f3f4f6; font-weight: bold; border-bottom: 2px solid #000;">
+                    <th style="padding: 10px; text-align: left;">Qtd</th>
+                    <th style="padding: 10px; text-align: left;">Item</th>
+                    <th style="padding: 10px; text-align: right;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml}
+                  <tr style="font-size: 16px; font-weight: bold;">
+                    <td colspan="2" style="padding: 15px 10px; text-align: right;">Total Pago:</td>
+                    <td style="padding: 15px 10px; text-align: right; color: #0d2149; font-family: monospace;">R$ ${order.total.toFixed(2).replace(".", ",")}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              ${order.status !== "PAGO" && order.paymentMethod === "PIX" ? `
+                <div style="background-color: #fffbeb; border: 1px solid #fef3c7; padding: 15px; border-radius: 6px; margin: 25px 0;">
+                  <strong style="color: #b45309; display: block; margin-bottom: 5px;">Aguardando Pagamento PIX</strong>
+                  <p style="margin: 0; font-size: 13px; color: #78350f;">Se você ainda não realizou o pagamento, copie o código PIX Copia e Cola disponível no site para concluir a compra e validar seu pedido.</p>
+                </div>
+              ` : ""}
+
+              <div style="border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #6b7280; text-align: center;">
+                <p style="margin: 0;">Este é um e-mail automático enviado em nome do Colégio Água Viva.</p>
+                <p style="margin: 5px 0 0 0;">Parceiro do time de Handebol HandVida. 100% da renda será revertida.</p>
+              </div>
+            </div>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"${config.emailNotifySender.split("@")[0]}" <${config.smtpUser}>`,
+          to: order.email,
+          subject: `🍕 Confirmação de Pedido ${order.id} - Pizza Solidária Handebol Água Viva`,
+          html: emailHtml
+        });
+        emailSent = true;
+      } catch (err: any) {
+        console.error("Erro ao enviar e-mail via SMTP:", err);
+        emailError = err.message;
+      }
+    } else {
+      console.log("ℹ️ SMTP não está totalmente configurado. O e-mail simulado seria enviado para:", order.email);
+    }
+  }
+
   res.json({
     success: true,
     sentTo: type === "email" ? order.email : order.whatsapp,
     timestamp: new Date().toISOString(),
+    realEmailSent: emailSent,
+    smtpConfigured: !!(config.smtpUser && config.smtpPass),
+    emailError: emailError || undefined,
     previewMessage: `Olá ${order.customerName}! Seu pedido ${order.id} foi confirmado com sucesso. Retirada em 21 de Agosto das 14h às 17h no Colégio Água Viva.`
   });
 });

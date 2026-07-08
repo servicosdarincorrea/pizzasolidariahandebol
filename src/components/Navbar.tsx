@@ -22,6 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({ cartCount, totalAmount = 0, acti
               src="/logo-branca-horizontal.png" 
               alt="Colégio Água Viva" 
               className="h-10 sm:h-12 w-auto object-contain group-hover:scale-105 transition-transform" 
+              referrerPolicy="no-referrer"
             />
           </div>
         </div>

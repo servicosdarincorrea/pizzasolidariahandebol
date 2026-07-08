@@ -21,7 +21,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [activeTab, setActiveTab] = useState<"ORDERS" | "SHEETS" | "MERCADOPAGO">("ORDERS");
+  const [activeTab, setActiveTab] = useState<"ORDERS" | "SHEETS" | "MERCADOPAGO" | "EMAIL">("ORDERS");
 
   const [config, setConfig] = useState<IntegrationConfig>({
     googleSheetsWebhookUrl: "",
@@ -30,6 +30,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     mercadoPagoAccessToken: "APP_USR-sandbox-test-key",
     mercadoPagoPublicKey: "TEST-pub-key-123",
     emailNotifySender: "notificacoes@handvida-aguaviva.com.br",
+    smtpHost: "smtp.gmail.com",
+    smtpPort: 465,
+    smtpSecure: true,
+    smtpUser: "",
+    smtpPass: "",
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
@@ -100,7 +105,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/orders");
+      const res = await fetch(`/api/orders?t=${Date.now()}`);
       const data = await res.json();
       if (data.orders) setOrders(data.orders);
     } catch (e) {
@@ -297,11 +302,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
 
   const totalArrecadado = orders
     .filter((o) => o.status === "PAGO")
-    .reduce((sum, o) => sum + o.total, 0);
+    .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
   const totalPizzasVendidas = orders
     .filter((o) => o.status === "PAGO")
-    .reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + i.quantity, 0), 0);
+    .reduce((sum, o) => sum + o.items.reduce((iSum, i) => iSum + Number(i.quantity || 0), 0), 0);
 
   if (!authenticated) {
     return (
@@ -458,6 +463,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
           <Sliders className="w-4 h-4 text-secondary-cyan" />
           <span>MERCADO PAGO</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab("EMAIL")}
+          className={`px-5 py-2 rounded-t font-mono font-bold text-xs uppercase border-2 border-b-0 transition-all flex items-center gap-2 ${
+            activeTab === "EMAIL"
+              ? "bg-black text-white border-black"
+              : "bg-white text-black border-black hover:bg-gray-100"
+          }`}
+        >
+          <Mail className="w-4 h-4 text-primary-deep" />
+          <span>CONFIGURAÇÃO DE E-MAIL</span>
+        </button>
       </div>
 
       {/* TAB 1: ORDERS TABLE */}
@@ -604,6 +621,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                           title="Enviar confirmação por WhatsApp"
                         >
                           <MessageCircle className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch("/api/notify/send", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ orderId: order.id, type: "email" })
+                              });
+                              if (res.ok) {
+                                alert("📧 E-mail de confirmação enviado com sucesso!");
+                              } else {
+                                alert("❌ Erro ao enviar e-mail. Certifique-se de que o SMTP está configurado nas configurações de e-mail.");
+                              }
+                            } catch (e) {
+                              alert("❌ Erro de rede ao enviar e-mail.");
+                            }
+                          }}
+                          className="bg-primary-deep text-white p-1.5 rounded border border-black inline-flex items-center justify-center hover:bg-primary-deep/90"
+                          title="Enviar comprovante por E-mail"
+                        >
+                          <Mail className="w-4 h-4" />
                         </button>
 
                         <button
@@ -932,6 +972,134 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
               className="bg-primary-deep text-white px-5 py-2.5 rounded font-mono font-bold text-xs uppercase border-2 border-black shadow-brutal-sm hover:bg-primary-deep/90 transition-all"
             >
               SALVAR CHAVES MERCADO PAGO
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* TAB 4: EMAIL SMTP CONFIGURATION */}
+      {activeTab === "EMAIL" && (
+        <div className="bg-white border-2 border-black p-6 rounded shadow-brutal max-w-3xl space-y-6">
+          <div className="flex items-center gap-3 border-b-2 border-black pb-4">
+            <Mail className="w-8 h-8 text-primary-deep" />
+            <div>
+              <h2 className="font-display font-black text-xl text-black">
+                CONFIGURAÇÃO DE E-MAIL (SMTP)
+              </h2>
+              <p className="text-xs text-gray-600 font-sans">
+                Configure os dados do seu servidor de e-mail (SMTP) para enviar recibos reais de confirmação diretamente para os clientes ao clicarem no botão "CONFIRMAR POR E-MAIL".
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveConfig} className="space-y-4">
+            <div>
+              <label className="block font-mono font-bold text-xs text-gray-700 mb-1">
+                E-MAIL DO REMETENTE (DISPLAY NAME)
+              </label>
+              <input
+                type="email"
+                placeholder="exemplo@colegioaguaviva.com.br"
+                value={config.emailNotifySender}
+                onChange={(e) => setConfig({ ...config, emailNotifySender: e.target.value })}
+                className="w-full px-4 py-2.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-cyan-50/50"
+                required
+              />
+              <span className="text-[11px] text-gray-500 mt-1 block">
+                O e-mail ou nome que aparecerá como remetente nas mensagens enviadas aos compradores.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block font-mono font-bold text-xs text-gray-700 mb-1">
+                  SERVIDOR SMTP (HOST)
+                </label>
+                <input
+                  type="text"
+                  placeholder="smtp.gmail.com"
+                  value={config.smtpHost}
+                  onChange={(e) => setConfig({ ...config, smtpHost: e.target.value })}
+                  className="w-full px-4 py-2.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-cyan-50/50"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-mono font-bold text-xs text-gray-700 mb-1">
+                  PORTA SMTP
+                </label>
+                <input
+                  type="number"
+                  placeholder="465"
+                  value={config.smtpPort}
+                  onChange={(e) => setConfig({ ...config, smtpPort: parseInt(e.target.value) || 465 })}
+                  className="w-full px-4 py-2.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-cyan-50/50"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 py-1">
+              <input
+                type="checkbox"
+                id="smtpSecure"
+                checked={config.smtpSecure}
+                onChange={(e) => setConfig({ ...config, smtpSecure: e.target.checked })}
+                className="w-4 h-4 border-2 border-black text-primary-deep focus:ring-0 cursor-pointer"
+              />
+              <label htmlFor="smtpSecure" className="font-mono font-bold text-xs text-gray-700 cursor-pointer select-none">
+                Usar Conexão Segura SSL/TLS (Recomendado para porta 465)
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-mono font-bold text-xs text-gray-700 mb-1">
+                  USUÁRIO SMTP (E-MAIL DE AUTENTICAÇÃO)
+                </label>
+                <input
+                  type="text"
+                  placeholder="seu-email@gmail.com"
+                  value={config.smtpUser || ""}
+                  onChange={(e) => setConfig({ ...config, smtpUser: e.target.value })}
+                  className="w-full px-4 py-2.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-cyan-50/50"
+                />
+              </div>
+
+              <div>
+                <label className="block font-mono font-bold text-xs text-gray-700 mb-1">
+                  SENHA SMTP (OU SENHA DE APP)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Sua senha ou senha de aplicativo..."
+                  value={config.smtpPass || ""}
+                  onChange={(e) => setConfig({ ...config, smtpPass: e.target.value })}
+                  className="w-full px-4 py-2.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-cyan-50/50"
+                />
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border-2 border-black p-4 rounded text-xs text-gray-800 space-y-2">
+              <span className="font-bold text-amber-900 block font-mono text-xs">
+                💡 COMO CONFIGURAR PARA CONTAS GMAIL:
+              </span>
+              <ol className="list-decimal list-inside space-y-1 text-gray-700 pl-1">
+                <li>No campo <strong>Servidor SMTP</strong>, digite <code>smtp.gmail.com</code> e defina a porta como <code>465</code> (marcando a caixa de conexão segura).</li>
+                <li>Ative a <strong>Verificação em Duas Etapas</strong> na sua Conta Google.</li>
+                <li>Acesse o menu <a href="https://myaccount.google.com/" target="_blank" rel="noopener noreferrer" className="font-bold underline text-primary-deep">Minha Conta Google &gt; Segurança</a> e busque por <strong>"Senhas de App"</strong>.</li>
+                <li>Crie uma senha de aplicativo chamada <code>Pizza Solidaria</code>.</li>
+                <li>Copie a senha gerada de 16 caracteres e cole no campo <strong>Senha SMTP</strong> acima.</li>
+              </ol>
+            </div>
+
+            <button
+              type="submit"
+              disabled={savingConfig}
+              className="bg-primary-deep text-white px-6 py-3 rounded font-mono font-bold text-xs uppercase border-2 border-black shadow-brutal-sm hover:bg-primary-deep/90 transition-all"
+            >
+              {savingConfig ? "Salvando..." : "SALVAR CONFIGURAÇÃO DE E-MAIL"}
             </button>
           </form>
         </div>

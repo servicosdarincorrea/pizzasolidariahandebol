@@ -305,7 +305,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             {/* 5. Nome do Aluno Vendedor */}
             <div>
               <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                NOME DO ALUNO (QUEM INDICOU/VEM DE)
+                NOME DO ALUNO
               </label>
               <input
                 type="text"
