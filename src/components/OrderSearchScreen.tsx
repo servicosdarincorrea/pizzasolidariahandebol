@@ -139,7 +139,13 @@ export const OrderSearchScreen: React.FC<OrderSearchScreenProps> = ({
             </div>
 
             <div className="space-y-3">
-              {results.map((order) => (
+              {[...results]
+                .sort((a, b) => {
+                  const numA = parseInt(String(a.id).replace(/\D/g, "")) || 0;
+                  const numB = parseInt(String(b.id).replace(/\D/g, "")) || 0;
+                  return numA - numB;
+                })
+                .map((order) => (
                 <div
                   key={order.id}
                   onClick={() => onSelectOrder(order)}

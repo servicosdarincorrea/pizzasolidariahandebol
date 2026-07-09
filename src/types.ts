@@ -74,4 +74,14 @@ export interface IntegrationConfig {
   smtpSecure?: boolean;
   smtpUser?: string;
   smtpPass?: string;
+  googleEmail?: string;
+  googleAccessToken?: string;
 }
+
+export interface RestrictedUser {
+  email: string;
+  password?: string;
+  name: string;
+  status: "Ativo" | "Inativo";
+}
+

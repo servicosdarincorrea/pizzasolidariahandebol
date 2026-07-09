@@ -36,7 +36,16 @@ function getOrders() {
   try {
     if (fs.existsSync(ORDERS_FILE)) {
       const data = fs.readFileSync(ORDERS_FILE, "utf-8");
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed.map((o: any) => {
+          if (o && o.id) {
+            o.id = String(o.id).replace(/^#/, "");
+          }
+          return o;
+        });
+      }
+      return parsed;
     }
   } catch (err) {
     console.error("Error reading orders file:", err);
@@ -49,6 +58,35 @@ function saveOrders(orders: any[]) {
     fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2), "utf-8");
   } catch (err) {
     console.error("Error writing orders file:", err);
+  }
+}
+
+const USERS_FILE = path.join(DATA_DIR, "users.json");
+const DEFAULT_LOCAL_USERS = [
+  { email: "servicosdarin@gmail.com", password: "handvida2026", name: "Administrador", status: "Ativo" },
+  { email: "admin@handvida.org", password: "1234", name: "Suporte", status: "Ativo" }
+];
+
+function getUsers() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const data = fs.readFileSync(USERS_FILE, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error("Error reading users file:", err);
+  }
+  return DEFAULT_LOCAL_USERS;
+}
+
+function saveUsers(users: any[]) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error writing users file:", err);
   }
 }
 
@@ -133,6 +171,80 @@ function generatePixString(pixKey: string, amount: number, orderId: string): str
   return payload + crcHex;
 }
 
+// Helper to keep the Google Sheets database fully in sync on any status updates or deletions
+async function syncAllToGoogleSheetsBackend(config: any, orders: any[]) {
+  if (!config.googleSpreadsheetId || !config.googleAccessToken) return;
+  try {
+    const headers = [
+      "ID Pedido",
+      "Data/Hora",
+      "Nome Cliente",
+      "WhatsApp",
+      "Aluno / Turma Indicada",
+      "Forma Pagamento",
+      "Status Pedido",
+      "Valor Total (R$)",
+      "Itens Resumo",
+      "E-mail",
+      "CPF",
+      "Itens JSON"
+    ];
+
+    // Ordenar os pedidos de acordo com o número do pedido (ID numérico)
+    const sortedOrders = [...orders].sort((a, b) => {
+      const numA = parseInt(String(a.id).replace(/\D/g, "")) || 0;
+      const numB = parseInt(String(b.id).replace(/\D/g, "")) || 0;
+      return numA - numB;
+    });
+
+    const rows = sortedOrders.map((o) => {
+      const itensSummary = o.items
+        .map((i: any) => `${i.quantity}x ${i.name}`)
+        .join("; ");
+
+      return [
+        String(o.id).replace(/^#/, ""),
+        o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
+        o.customerName,
+        o.whatsapp || "",
+        `${o.studentName} (${o.studentTurma})`,
+        o.paymentMethod,
+        o.status,
+        o.total.toFixed(2),
+        itensSummary,
+        o.email || "",
+        o.cpf || "",
+        JSON.stringify(o.items)
+      ];
+    });
+
+    const values = [headers, ...rows];
+
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${config.googleSpreadsheetId}/values/Pedidos!A1?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${config.googleAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          range: "Pedidos!A1",
+          majorDimension: "ROWS",
+          values,
+        }),
+      }
+    );
+    if (!res.ok) {
+      console.error("Erro na re-sincronização automática com Google Sheets:", await res.text());
+    } else {
+      console.log("✅ Planilha Google Sheets re-sincronizada com sucesso!");
+    }
+  } catch (err) {
+    console.error("Erro na re-sincronização automática com Google Sheets:", err);
+  }
+}
+
 // ========================
 // API ENDPOINTS
 // ========================
@@ -169,7 +281,7 @@ app.get("/api/orders", (req, res) => {
       if (queryGeneral) {
         const oId = String(o.id).toLowerCase();
         const orderCpfDigits = (o.cpf || "").replace(/\D/g, "");
-        const matchId = oId === queryGeneral || oId === `#${queryGeneral}`;
+        const matchId = oId.replace(/^#/, "") === queryGeneral.replace(/^#/, "");
         const matchCpfGen = cleanGeneralDigits.length >= 3 && orderCpfDigits && orderCpfDigits.includes(cleanGeneralDigits);
         const matchName = String(o.customerName || "").toLowerCase().includes(queryGeneral);
         matchGeneral = matchId || matchCpfGen || matchName;
@@ -182,17 +294,31 @@ app.get("/api/orders", (req, res) => {
       return true;
     });
 
-    return res.json({ orders: filtered });
+    // Sort filtered orders by order number (numeric)
+    const sortedFiltered = filtered.sort((a: any, b: any) => {
+      const numA = parseInt(String(a.id).replace(/\D/g, "")) || 0;
+      const numB = parseInt(String(b.id).replace(/\D/g, "")) || 0;
+      return numA - numB;
+    });
+
+    return res.json({ orders: sortedFiltered });
   }
 
-  res.json({ orders });
+  // Sort all orders by order number (numeric)
+  const sortedAll = orders.sort((a: any, b: any) => {
+    const numA = parseInt(String(a.id).replace(/\D/g, "")) || 0;
+    const numB = parseInt(String(b.id).replace(/\D/g, "")) || 0;
+    return numA - numB;
+  });
+
+  res.json({ orders: sortedAll });
 });
 
 // Get single order by ID
 app.get("/api/orders/:id", (req, res) => {
   const orders = getOrders();
-  const orderId = req.params.id.startsWith("#") ? req.params.id : `#${req.params.id}`;
-  const order = orders.find((o: any) => o.id === orderId || o.id === req.params.id);
+  const targetId = req.params.id.replace(/^#/, "");
+  const order = orders.find((o: any) => String(o.id).replace(/^#/, "") === targetId);
   if (!order) {
     return res.status(404).json({ error: "Pedido não encontrado" });
   }
@@ -209,7 +335,7 @@ app.post("/api/orders", async (req, res) => {
       const maxId = Math.max(...orders.map((o: any) => parseInt(String(o.id).replace(/\D/g, "")) || 0));
       nextNum = maxId > 0 ? maxId + 1 : 1001 + orders.length;
     }
-    const orderId = `#${nextNum}`;
+    const orderId = String(nextNum);
     
     const { items, customerName, cpf, studentTurma, studentName, email, whatsapp, paymentMethod, cardData, total } = req.body;
     
@@ -267,6 +393,48 @@ app.post("/api/orders", async (req, res) => {
       }
     }
 
+    // Direct Google Sheets API append if spreadsheetId and token are set (Real-time DB sync)
+    if (config.googleSpreadsheetId && config.googleAccessToken) {
+      try {
+        const itensSummary = newOrder.items
+          .map((i: any) => `${i.quantity}x ${i.name}`)
+          .join("; ");
+
+        const row = [
+          newOrder.id,
+          new Date(newOrder.createdAt).toISOString(),
+          newOrder.customerName,
+          newOrder.whatsapp,
+          `${newOrder.studentName} (${newOrder.studentTurma})`,
+          newOrder.paymentMethod,
+          newOrder.status,
+          newOrder.total.toFixed(2),
+          itensSummary,
+          newOrder.email,
+          newOrder.cpf,
+          JSON.stringify(newOrder.items)
+        ];
+
+        await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${config.googleSpreadsheetId}/values/Pedidos!A:A:append?valueInputOption=USER_ENTERED`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${config.googleAccessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              range: "Pedidos!A:A",
+              majorDimension: "ROWS",
+              values: [row],
+            }),
+          }
+        );
+      } catch (sheetsErr) {
+        console.error("Erro na sincronização direta em tempo real com Google Sheets:", sheetsErr);
+      }
+    }
+
     res.status(201).json({ order: newOrder });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -276,8 +444,8 @@ app.post("/api/orders", async (req, res) => {
 // Update order status (Admin or Payment confirmation)
 app.patch("/api/orders/:id/status", (req, res) => {
   const orders = getOrders();
-  const orderId = req.params.id.startsWith("#") ? req.params.id : `#${req.params.id}`;
-  const index = orders.findIndex((o: any) => o.id === orderId || o.id === req.params.id);
+  const targetId = req.params.id.replace(/^#/, "");
+  const index = orders.findIndex((o: any) => String(o.id).replace(/^#/, "") === targetId);
   
   if (index === -1) {
     return res.status(404).json({ error: "Pedido não encontrado" });
@@ -287,29 +455,36 @@ app.patch("/api/orders/:id/status", (req, res) => {
   orders[index].status = status;
   saveOrders(orders);
 
+  const config = getConfig();
+  syncAllToGoogleSheetsBackend(config, orders);
+
   res.json({ order: orders[index] });
 });
 
 // Delete all orders (Admin cleanup)
 app.delete("/api/orders", (req, res) => {
   saveOrders([]);
+  const config = getConfig();
+  syncAllToGoogleSheetsBackend(config, []);
   res.json({ success: true, message: "Todos os pedidos foram removidos com sucesso." });
 });
 
 // Delete single order by ID
 app.delete("/api/orders/:id", (req, res) => {
   const orders = getOrders();
-  const orderId = req.params.id.startsWith("#") ? req.params.id : `#${req.params.id}`;
-  const filtered = orders.filter((o: any) => o.id !== orderId && o.id !== req.params.id);
+  const targetId = req.params.id.replace(/^#/, "");
+  const filtered = orders.filter((o: any) => String(o.id).replace(/^#/, "") !== targetId);
   saveOrders(filtered);
+  const config = getConfig();
+  syncAllToGoogleSheetsBackend(config, filtered);
   res.json({ success: true });
 });
 
 // Simulate instant PIX approval (Great for user verification and demo!)
 app.post("/api/payment/simulate-pix-approval/:id", (req, res) => {
   const orders = getOrders();
-  const orderId = req.params.id.startsWith("#") ? req.params.id : `#${req.params.id}`;
-  const index = orders.findIndex((o: any) => o.id === orderId || o.id === req.params.id);
+  const targetId = req.params.id.replace(/^#/, "");
+  const index = orders.findIndex((o: any) => String(o.id).replace(/^#/, "") === targetId);
   
   if (index === -1) {
     return res.status(404).json({ error: "Pedido não encontrado" });
@@ -319,6 +494,9 @@ app.post("/api/payment/simulate-pix-approval/:id", (req, res) => {
   order.status = "PAGO";
   order.paidAt = new Date().toISOString();
   saveOrders(orders);
+
+  const config = getConfig();
+  syncAllToGoogleSheetsBackend(config, orders);
 
   const msg = order.paymentMethod === "CARTAO" 
     ? "Pagamento no Cartão de Crédito aprovado com sucesso!" 
@@ -408,7 +586,7 @@ app.post("/api/webhooks/mercadopago", async (req, res) => {
         
         if (paymentData.status === "approved" && paymentData.external_reference) {
           const orders = getOrders();
-          const orderIndex = orders.findIndex((o: any) => o.id === paymentData.external_reference);
+          const orderIndex = orders.findIndex((o: any) => String(o.id).replace(/^#/, "") === String(paymentData.external_reference).replace(/^#/, ""));
           
           if (orderIndex !== -1 && orders[orderIndex].status !== "PAGO") {
             orders[orderIndex].status = "PAGO";
@@ -426,11 +604,63 @@ app.post("/api/webhooks/mercadopago", async (req, res) => {
   res.status(200).send("OK");
 });
 
+// Google Sheets Webhook - Recebe atualizações em tempo real vindas da planilha (Edição de células)
+app.post("/api/webhooks/sheets", (req, res) => {
+  const { id, status, customerName, whatsapp, studentName, paymentMethod, total } = req.body;
+  
+  if (!id) {
+    return res.status(400).json({ error: "O campo 'id' é obrigatório para identificar o pedido." });
+  }
+
+  const orders = getOrders();
+  const cleanId = String(id).replace(/^#/, "").trim();
+  const index = orders.findIndex((o: any) => String(o.id).replace(/^#/, "").trim() === cleanId);
+
+  if (index !== -1) {
+    // Atualiza apenas os campos que forem enviados na requisição
+    if (status) {
+      orders[index].status = String(status).trim().toUpperCase();
+    }
+    if (customerName) {
+      orders[index].customerName = String(customerName).trim();
+    }
+    if (whatsapp) {
+      orders[index].whatsapp = String(whatsapp).trim();
+    }
+    if (paymentMethod) {
+      orders[index].paymentMethod = String(paymentMethod).trim().toUpperCase();
+    }
+    if (total !== undefined) {
+      const parsedTotal = parseFloat(String(total).replace(/[^\d.,]/g, "").replace(",", "."));
+      if (!isNaN(parsedTotal)) {
+        orders[index].total = parsedTotal;
+      }
+    }
+    if (studentName) {
+      const nameStr = String(studentName).trim();
+      const match = nameStr.match(/^(.*?)\s*\((.*?)\)$/);
+      if (match) {
+        orders[index].studentName = match[1].trim();
+        orders[index].studentTurma = match[2].trim();
+      } else {
+        orders[index].studentName = nameStr;
+      }
+    }
+
+    saveOrders(orders);
+    console.log(`[Google Sheets Webhook] Pedido #${id} atualizado localmente via Planilha!`);
+    return res.json({ success: true, message: `Pedido #${id} atualizado com sucesso!` });
+  }
+
+  console.warn(`[Google Sheets Webhook] Pedido #${id} não encontrado para atualização.`);
+  res.status(404).json({ error: `Pedido #${id} não encontrado.` });
+});
+
 // Notification simulation endpoint (Email & WhatsApp log)
 app.post("/api/notify/send", async (req, res) => {
   const { orderId, type } = req.body;
   const orders = getOrders();
-  const order = orders.find((o: any) => o.id === orderId);
+  const order = orders.find((o: any) => String(o.id).replace(/^#/, "") === String(orderId).replace(/^#/, ""));
 
   if (!order) return res.status(404).json({ error: "Pedido não encontrado" });
 
@@ -595,6 +825,218 @@ app.post("/api/sheets/sync", async (req, res) => {
     destination: "Sincronização Interna Pronta",
     message: "Planilha interna atualizada. Configure uma URL de Apps Script / Webhook ou baixe o CSV diretamente."
   });
+});
+
+// Import orders from Google Sheets to override or merge local cache
+app.post("/api/sheets/import", (req, res) => {
+  try {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) {
+      return res.status(400).json({ error: "Lista de pedidos inválida" });
+    }
+    saveOrders(orders);
+    res.json({ success: true, count: orders.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin Login checking against static list or live Google Sheets list
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios." });
+    }
+
+    // Check against local users (this includes fallback users + any users saved locally)
+    const localUsers = getUsers();
+    const localMatch = localUsers.find(
+      (u: any) => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.status === "Ativo"
+    );
+
+    if (localMatch) {
+      return res.json({ success: true, user: { email: localMatch.email, name: localMatch.name } });
+    }
+
+    // If Google Sheets is integrated, try fetching from Google Sheets to authenticate
+    const config = getConfig();
+    if (config.googleSpreadsheetId && config.googleAccessToken) {
+      try {
+        const sheetsRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${config.googleSpreadsheetId}/values/Usuarios!A1:Z`,
+          {
+            headers: {
+              Authorization: `Bearer ${config.googleAccessToken}`,
+            },
+          }
+        );
+
+        if (sheetsRes.ok) {
+          const data = await sheetsRes.json();
+          const values: string[][] = data.values;
+          if (values && values.length > 1) {
+            const headers = values[0];
+            const rows = values.slice(1);
+
+            const emailIdx = headers.indexOf("E-mail");
+            const passIdx = headers.indexOf("Senha");
+            const nameIdx = headers.indexOf("Nome");
+            const statusIdx = headers.indexOf("Status");
+
+            if (emailIdx !== -1 && passIdx !== -1) {
+              const sheetMatch = rows.find((row) => {
+                const uEmail = row[emailIdx] || "";
+                const uPass = row[passIdx] || "";
+                const uStatus = statusIdx !== -1 ? row[statusIdx] || "Ativo" : "Ativo";
+
+                return (
+                  uEmail.toLowerCase() === email.toLowerCase() &&
+                  uPass === password &&
+                  uStatus === "Ativo"
+                );
+              });
+
+              if (sheetMatch) {
+                const name = nameIdx !== -1 ? sheetMatch[nameIdx] || "Usuário" : "Usuário";
+                return res.json({ success: true, user: { email, name } });
+              }
+            }
+          }
+        }
+      } catch (sheetsErr) {
+        console.error("Erro ao autenticar usando planilha Google Sheets:", sheetsErr);
+      }
+    }
+
+    return res.status(401).json({ error: "E-mail ou senha incorretos." });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Fetch active users list from Google Sheets or fallback to defaults
+app.get("/api/sheets/users", async (req, res) => {
+  const config = getConfig();
+  const localUsers = getUsers();
+
+  if (!config.googleSpreadsheetId || !config.googleAccessToken || config.googleSpreadsheetId.includes("exemplo")) {
+    return res.json({
+      success: true,
+      source: "local",
+      users: localUsers
+    });
+  }
+
+  try {
+    const sheetsRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${config.googleSpreadsheetId}/values/Usuarios!A1:Z`,
+      {
+        headers: {
+          Authorization: `Bearer ${config.googleAccessToken}`,
+        },
+      }
+    );
+
+    if (!sheetsRes.ok) {
+      console.warn("Aba 'Usuarios' nao encontrada ou sem permissao no Sheets, retornando usuarios locais.");
+      return res.json({ success: true, source: "local_fallback", users: localUsers });
+    }
+
+    const data = await sheetsRes.json();
+    const values: string[][] = data.values;
+    if (!values || values.length <= 1) {
+      return res.json({ success: true, source: "google", users: localUsers });
+    }
+
+    const headers = values[0];
+    const rows = values.slice(1);
+
+    const emailIdx = headers.indexOf("E-mail");
+    const passIdx = headers.indexOf("Senha");
+    const nameIdx = headers.indexOf("Nome");
+    const statusIdx = headers.indexOf("Status");
+
+    const sheetUsers = rows.map((row, index) => ({
+      email: emailIdx !== -1 && row[emailIdx] ? row[emailIdx] : "",
+      password: passIdx !== -1 && row[passIdx] ? row[passIdx] : "",
+      name: nameIdx !== -1 && row[nameIdx] ? row[nameIdx] : `Usuário ${index + 1}`,
+      status: (statusIdx !== -1 && row[statusIdx] === "Inativo" ? "Inativo" : "Ativo") as "Ativo" | "Inativo"
+    })).filter(u => u.email);
+
+    // Merge Google Sheets users with local users, prioritizing Sheets
+    const mergedMap = new Map<string, any>();
+    for (const u of localUsers) {
+      mergedMap.set(u.email.toLowerCase(), u);
+    }
+    for (const u of sheetUsers) {
+      mergedMap.set(u.email.toLowerCase(), u);
+    }
+    const finalUsers = Array.from(mergedMap.values());
+    
+    // Save merged list locally to stay in sync
+    saveUsers(finalUsers);
+
+    res.json({ success: true, source: "google", users: finalUsers });
+  } catch (err: any) {
+    console.error("Erro ao obter dados do Google Sheets, usando padrao local:", err);
+    res.json({ success: true, source: "local_fallback_error", users: localUsers });
+  }
+});
+
+// Save/overwrite active users list to Google Sheets "Usuarios" sheet tab and local JSON
+app.post("/api/sheets/users/save", async (req, res) => {
+  const { users } = req.body;
+  if (!Array.isArray(users)) {
+    return res.status(400).json({ error: "Lista de usuários inválida." });
+  }
+
+  // Always save locally first so we have offline/local persistence
+  saveUsers(users);
+
+  const config = getConfig();
+  if (!config.googleSpreadsheetId || !config.googleAccessToken || config.googleSpreadsheetId.includes("exemplo")) {
+    // If sheets is not connected, it's fine! We successfully saved locally.
+    return res.json({ success: true, message: "Usuários salvos localmente com sucesso!" });
+  }
+
+  try {
+    const headers = ["E-mail", "Senha", "Nome", "Status"];
+    const rows = users.map((u: any) => [
+      u.email,
+      u.password || "",
+      u.name,
+      u.status
+    ]);
+
+    const values = [headers, ...rows];
+
+    const sheetsRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${config.googleSpreadsheetId}/values/Usuarios!A1?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${config.googleAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          range: "Usuarios!A1",
+          majorDimension: "ROWS",
+          values,
+        }),
+      }
+    );
+
+    if (!sheetsRes.ok) {
+      const errText = await sheetsRes.text();
+      throw new Error(`Erro na API Google Sheets: ${errText}`);
+    }
+
+    res.json({ success: true, message: "Usuários salvos com sucesso na planilha e localmente!" });
+  } catch (err: any) {
+    // Return success but warning that google sheets write failed
+    res.json({ success: true, warning: `Salvo localmente, mas erro ao salvar no Google Sheets: ${err.message}` });
+  }
 });
 
 // Google Sheets formatted CSV export

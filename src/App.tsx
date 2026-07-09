@@ -40,7 +40,7 @@ export default function App() {
     if (!lookupId.trim()) return;
     setLookupError("");
     try {
-      const formattedId = lookupId.trim().startsWith("#") ? lookupId.trim() : `#${lookupId.trim()}`;
+      const formattedId = lookupId.trim().replace(/^#/, "");
       const res = await fetch(`/api/orders/${encodeURIComponent(formattedId)}?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
@@ -51,7 +51,7 @@ export default function App() {
           return;
         }
       }
-      setLookupError("Pedido não encontrado. Verifique o código informado (ex: #1001).");
+      setLookupError("Pedido não encontrado. Verifique o código informado (ex: 1001).");
     } catch (err) {
       setLookupError("Erro ao consultar o pedido.");
     }
