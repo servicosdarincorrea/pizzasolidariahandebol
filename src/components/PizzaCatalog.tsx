@@ -37,7 +37,7 @@ export const PizzaCatalog: React.FC<PizzaCatalogProps> = ({ cart, onUpdateQuanti
         </h2>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <span className="font-mono font-bold text-sm bg-primary-deep text-white px-3 py-1.5 rounded border-2 border-black shadow-brutal-sm">
-            R$ 50,00 Unid.
+            R$ 0,05 Unid.
           </span>
         </div>
       </div>

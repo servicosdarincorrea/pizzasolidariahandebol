@@ -315,13 +315,13 @@ export async function getOrdersFromSpreadsheet(accessToken: string, spreadsheetI
           return {
             name: itemMatch[2],
             quantity: parseInt(itemMatch[1]),
-            price: 50, // valor padrão de fallback
+            price: 0.05, // valor padrão de fallback
           };
         }
         return {
           name: part.trim(),
           quantity: 1,
-          price: 50,
+          price: 0.05,
         };
       });
     }
