@@ -315,14 +315,42 @@ app.get("/api/orders", (req, res) => {
 });
 
 // Get single order by ID
-app.get("/api/orders/:id", (req, res) => {
+app.get("/api/orders/:id", async (req, res) => {
   const orders = getOrders();
   const targetId = req.params.id.replace(/^#/, "");
-  const order = orders.find((o: any) => String(o.id).replace(/^#/, "") === targetId);
-  if (!order) {
+  const index = orders.findIndex((o: any) => String(o.id).replace(/^#/, "") === targetId);
+  if (index === -1) {
     return res.status(404).json({ error: "Pedido não encontrado" });
   }
-  res.json({ order });
+
+  const order = orders[index];
+  const config = getConfig();
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || config.mercadoPagoAccessToken || config.mercadoPagoToken;
+
+  // Se o pedido está pendente e temos um ID de pagamento do Mercado Pago e token de acesso
+  if (order.status !== "PAGO" && order.mpPaymentId && accessToken && accessToken.startsWith("APP_USR-")) {
+    try {
+      const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${order.mpPaymentId}`, {
+        headers: { "Authorization": `Bearer ${accessToken}` }
+      });
+      if (mpRes.ok) {
+        const paymentData = await mpRes.json();
+        if (paymentData.status === "approved") {
+          order.status = "PAGO";
+          order.paidAt = new Date().toISOString();
+          saveOrders(orders);
+          console.log(`✅ [Polling] Pedido ${order.id} aprovado automaticamente via Pix verificado!`);
+          
+          // Sincroniza em tempo real com Google Sheets
+          syncAllToGoogleSheetsBackend(config, orders);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao verificar status do pagamento no Mercado Pago via Polling:", err);
+    }
+  }
+
+  res.json({ order: orders[index] });
 });
 
 // Create order
@@ -358,6 +386,46 @@ app.post("/api/orders", async (req, res) => {
     const totalAmount = Number(total) || items.reduce((acc: number, i: any) => acc + (i.price * i.quantity), 0);
     const pixString = generatePixString("servicosdarin@gmail.com", totalAmount, orderId);
 
+    const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN || config.mercadoPagoAccessToken || config.mercadoPagoToken;
+    let mpPaymentId: string | undefined = undefined;
+    let finalPixString = pixString;
+
+    if (paymentMethod === "PIX" && accessToken && accessToken.startsWith("APP_USR-")) {
+      try {
+        const response = await fetch("https://api.mercadopago.com/v1/payments", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "X-Idempotency-Key": `${orderId}-${Date.now()}`
+          },
+          body: JSON.stringify({
+            transaction_amount: Number(totalAmount),
+            description: `Pedido de Pizzas Hand Vida ${orderId}`,
+            payment_method_id: "pix",
+            external_reference: orderId,
+            payer: {
+              email: email || "comprador@handvida.org",
+              first_name: customerName?.split(" ")[0] || "Cliente",
+              last_name: customerName?.split(" ").slice(1).join(" ") || "Solidário"
+            }
+          })
+        });
+
+        const mpData = await response.json();
+        if (response.ok && mpData.point_of_interaction?.transaction_data) {
+          const txData = mpData.point_of_interaction.transaction_data;
+          mpPaymentId = String(mpData.id);
+          finalPixString = txData.qr_code;
+          console.log(`✅ Criado pagamento PIX no Mercado Pago com ID: ${mpPaymentId}`);
+        } else {
+          console.warn("Mercado Pago API retornou erro ao criar pagamento, usando fallback simulado:", mpData);
+        }
+      } catch (err) {
+        console.error("Erro ao falar com Mercado Pago API para gerar pagamento real:", err);
+      }
+    }
+
     const newOrder = {
       id: orderId,
       items,
@@ -374,7 +442,8 @@ app.post("/api/orders", async (req, res) => {
       createdAt: new Date().toISOString(),
       pickupDate: "21 de Agosto das 14h às 17h",
       mpTransactionId: `tx_${Date.now()}`,
-      pixCopyPaste: pixString
+      mpPaymentId,
+      pixCopyPaste: finalPixString
     };
 
     orders.unshift(newOrder);

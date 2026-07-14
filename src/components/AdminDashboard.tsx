@@ -53,6 +53,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [googleEmail, setGoogleEmail] = useState<string | null>(() => localStorage.getItem("av_google_email"));
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [creatingSheet, setCreatingSheet] = useState(false);
+  const [linkSheetInput, setLinkSheetInput] = useState("");
+  const [linkingSheet, setLinkingSheet] = useState(false);
+  const [showLinkInput, setShowLinkInput] = useState(false);
   const [createdSheetInfo, setCreatedSheetInfo] = useState<{ spreadsheetId: string; spreadsheetUrl: string } | null>(() => {
     const saved = localStorage.getItem("av_google_sheet_info");
     return saved ? JSON.parse(saved) : null;
@@ -683,6 +686,84 @@ function onEditTrigger(e) {
       setSyncStatus("❌ Erro ao criar planilha no Google.");
     } finally {
       setCreatingSheet(false);
+    }
+  };
+
+  const handleLinkExistingSheet = async (inputIdOrUrl: string) => {
+    if (!googleToken) {
+      setSheetError("Por favor, clique em 'Conectar Google Sheets' primeiro para autenticar!");
+      return;
+    }
+    if (!inputIdOrUrl) {
+      setSheetError("Por favor, insira o ID ou URL da planilha!");
+      return;
+    }
+
+    // Extrair ID da URL se necessário
+    let id = inputIdOrUrl.trim();
+    if (id.includes("docs.google.com/spreadsheets")) {
+      const match = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) {
+        id = match[1];
+      }
+    }
+
+    if (!id) {
+      setSheetError("ID da planilha inválido ou não detectado na URL.");
+      return;
+    }
+
+    setSheetError(null);
+    setLinkingSheet(true);
+    setSyncStatus("Vinculando planilha existente...");
+    try {
+      // 1. Tenta recuperar os pedidos da planilha para validar se temos acesso e se ela é válida
+      const importedOrders = await getOrdersFromSpreadsheet(googleToken, id);
+      
+      const info = {
+        spreadsheetId: id,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${id}/edit`
+      };
+      
+      setCreatedSheetInfo(info);
+      localStorage.setItem("av_google_sheet_info", JSON.stringify(info));
+
+      // 2. Salva o ID da planilha e o token nas configurações do servidor
+      try {
+        await fetch("/api/sheets/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...config, googleSpreadsheetId: id, googleAccessToken: googleToken })
+        });
+        setConfig(prev => ({ ...prev, googleSpreadsheetId: id, googleAccessToken: googleToken }));
+      } catch (confErr) {}
+
+      // 3. Sincroniza
+      setSyncStatus(`🎉 Planilha vinculada com sucesso! Recuperados ${importedOrders.length} pedidos.`);
+      
+      // Se houver pedidos importados, atualiza a lista local
+      if (importedOrders.length > 0) {
+        try {
+          const saveRes = await fetch("/api/sheets/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orders: importedOrders })
+          });
+          if (saveRes.ok) {
+            await fetchOrders();
+          }
+        } catch (importErr) {}
+      }
+      
+      fetchUsers();
+      setLinkSheetInput("");
+      setShowLinkInput(false);
+    } catch (err: any) {
+      console.error(err);
+      setSheetError("Erro ao vincular planilha: " + (err.message || "Certifique-se de que a conta Google conectada tem acesso à planilha com esse ID/URL e que a aba 'Pedidos' existe."));
+      setSyncStatus("❌ Falha ao vincular planilha existente.");
+    } finally {
+      setLinkingSheet(false);
     }
   };
 
@@ -1424,22 +1505,52 @@ function onEditTrigger(e) {
                 {!showCreateConfirm && !showSyncConfirm && !showRetrieveConfirm && (
                   <>
                     {!createdSheetInfo ? (
-                      <div className="text-center py-3 bg-green-50/50 rounded border border-green-200 p-4 space-y-3">
-                        <p className="text-xs text-gray-700">
-                          Clique abaixo para gerar automaticamente a planilha oficial no seu Google Drive com todos os pedidos gravados.
-                        </p>
-                        <button
-                          type="button"
-                          disabled={creatingSheet}
-                          onClick={() => handleCreateGoogleSheet()}
-                          className="bg-green-600 hover:bg-green-700 text-white font-mono font-bold text-xs uppercase px-6 py-3 rounded border-2 border-black shadow-brutal-sm flex items-center justify-center gap-2 mx-auto transition-all disabled:opacity-50"
-                        >
-                          <FileSpreadsheet className="w-4 h-4" />
-                          <span>{creatingSheet ? "Criando Planilha no Google Drive..." : "🚀 Criar Planilha de Pedidos no Meu Google Sheets"}</span>
-                        </button>
+                      <div className="space-y-4">
+                        <div className="text-center py-3 bg-green-50/50 rounded border border-green-200 p-4 space-y-3">
+                          <p className="text-xs text-gray-700">
+                            Clique abaixo para gerar automaticamente a planilha oficial no seu Google Drive com todos os pedidos gravados.
+                          </p>
+                          <button
+                            type="button"
+                            disabled={creatingSheet}
+                            onClick={() => handleCreateGoogleSheet()}
+                            className="bg-green-600 hover:bg-green-700 text-white font-mono font-bold text-xs uppercase px-6 py-3 rounded border-2 border-black shadow-brutal-sm flex items-center justify-center gap-2 mx-auto transition-all disabled:opacity-50"
+                          >
+                            <FileSpreadsheet className="w-4 h-4" />
+                            <span>{creatingSheet ? "Criando Planilha no Google Drive..." : "🚀 Criar Planilha de Pedidos no Meu Google Sheets"}</span>
+                          </button>
+                        </div>
+
+                        <div className="border-t border-dashed border-gray-300 my-2 pt-2"></div>
+
+                        <div className="bg-cyan-50/50 border border-cyan-200 p-4 rounded space-y-3 text-left">
+                          <div className="text-xs text-cyan-900 font-bold flex items-center gap-1.5 uppercase font-mono">
+                            <span>🔗 Vincular Planilha do Google Existente</span>
+                          </div>
+                          <p className="text-xs text-gray-700 leading-relaxed">
+                            Se você já possui uma planilha criada antes (ou se o servidor reiniciou), cole o link dela ou o ID abaixo para conectá-la e restaurar seus dados (pedidos e usuários) de forma 100% integrada!
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="text"
+                              placeholder="Cole o link completo da Planilha ou o ID"
+                              value={linkSheetInput}
+                              onChange={(e) => setLinkSheetInput(e.target.value)}
+                              className="flex-1 px-3 py-2 border-2 border-black font-mono text-xs focus:outline-none focus:bg-white text-black"
+                            />
+                            <button
+                              type="button"
+                              disabled={linkingSheet}
+                              onClick={() => handleLinkExistingSheet(linkSheetInput)}
+                              className="bg-cyan-600 hover:bg-cyan-700 text-white font-mono font-bold text-xs px-4 py-2 rounded border border-black shadow-sm disabled:opacity-50 whitespace-nowrap"
+                            >
+                              {linkingSheet ? "Vinculando..." : "Vincular Planilha"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ) : (
-                      <div className="bg-green-100 border-2 border-green-700 p-4 rounded space-y-3">
+                      <div className="bg-green-100 border-2 border-green-700 p-4 rounded space-y-3 text-left">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 text-green-900 font-display font-bold text-sm">
                             <CheckCircle className="w-5 h-5 text-green-700" />
@@ -1483,7 +1594,39 @@ function onEditTrigger(e) {
                           >
                             Criar Nova Planilha Separada
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowLinkInput(!showLinkInput)}
+                            className="bg-slate-200 hover:bg-slate-300 text-black font-mono text-xs px-3 py-2 rounded border border-black"
+                          >
+                            {showLinkInput ? "Ocultar Vínculo" : "Vincular Outra Planilha"}
+                          </button>
                         </div>
+
+                        {showLinkInput && (
+                          <div className="bg-cyan-50/50 border border-cyan-200 p-3 rounded mt-3 space-y-2 text-left">
+                            <label className="block text-[11px] font-bold text-cyan-950 uppercase font-mono">
+                              Cole o link completo da Nova Planilha ou ID:
+                            </label>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                type="text"
+                                placeholder="Cole o link completo da Planilha ou o ID"
+                                value={linkSheetInput}
+                                onChange={(e) => setLinkSheetInput(e.target.value)}
+                                className="flex-1 px-3 py-1.5 border-2 border-black font-mono text-xs focus:outline-none focus:bg-white text-black"
+                              />
+                              <button
+                                type="button"
+                                disabled={linkingSheet}
+                                onClick={() => handleLinkExistingSheet(linkSheetInput)}
+                                className="bg-cyan-600 hover:bg-cyan-700 text-white font-mono font-bold text-xs px-3 py-1.5 rounded border border-black shadow-sm disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {linkingSheet ? "Vinculando..." : "Confirmar Vínculo"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>

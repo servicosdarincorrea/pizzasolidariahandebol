@@ -337,191 +337,20 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-2">
             MÉTODO DE PAGAMENTO (MERCADO PAGO)
           </label>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, paymentMethod: "PIX" })}
-              className={`py-4 px-3 border-2 border-black font-display font-black text-base flex flex-col items-center justify-center gap-2 transition-all shadow-brutal-sm ${
-                formData.paymentMethod === "PIX"
-                  ? "bg-secondary-cyan text-black"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <QrCode className="w-6 h-6" />
-              <span>PIX</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, paymentMethod: "CARTAO" })}
-              className={`py-4 px-3 border-2 border-black font-display font-black text-base flex flex-col items-center justify-center gap-2 transition-all shadow-brutal-sm ${
-                formData.paymentMethod === "CARTAO"
-                  ? "bg-secondary-cyan text-black"
-                  : "bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-            >
-              <CreditCard className="w-6 h-6" />
-              <span>CARTÃO</span>
-            </button>
-          </div>
-
-          {/* Credit Card Form Fields */}
-          {formData.paymentMethod === "CARTAO" && (
-            <div className="mt-4 bg-white border-2 border-black p-5 rounded shadow-brutal space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between border-b-2 border-black pb-2">
-                <span className="font-display font-black text-sm uppercase text-black flex items-center gap-2">
-                  <CreditCard className="w-4 h-4 text-primary-deep" />
-                  DADOS DO CARTÃO DE CRÉDITO
-                </span>
-                <span className="bg-green-100 text-green-800 border border-black px-2 py-0.5 rounded font-mono text-[10px] font-bold">
-                  🔒 CRIPTOGRAFADO SSL
-                </span>
+          <div className="bg-cyan-50 border-2 border-black p-4 rounded shadow-brutal-sm flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-secondary-cyan text-black p-2.5 rounded border border-black shadow-sm">
+                <QrCode className="w-6 h-6" />
               </div>
-
-              {/* Número do Cartão */}
               <div>
-                <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                  NÚMERO DO CARTÃO *
-                </label>
-                <input
-                  type="text"
-                  placeholder="0000 0000 0000 0000"
-                  maxLength={19}
-                  value={cardData.cardNumber}
-                  onChange={(e) => {
-                    setCardData({ ...cardData, cardNumber: formatCardNumber(e.target.value) });
-                    if (errors.cardNumber) setErrors({ ...errors, cardNumber: "" });
-                  }}
-                  className={`w-full bg-white px-4 py-3 border-2 border-black font-mono text-base focus:outline-none focus:bg-cyan-50/50 shadow-brutal-sm transition-all ${
-                    errors.cardNumber ? "border-tertiary-red bg-red-50" : ""
-                  }`}
-                />
-                {errors.cardNumber && (
-                  <span className="text-tertiary-red font-mono text-xs font-bold mt-1 block">
-                    {errors.cardNumber}
-                  </span>
-                )}
-              </div>
-
-              {/* Nome do Titular */}
-              <div>
-                <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                  NOME IMPRESSO NO CARTÃO *
-                </label>
-                <input
-                  type="text"
-                  placeholder="EX: MARIA A SILVA"
-                  value={cardData.cardHolder}
-                  onChange={(e) => {
-                    setCardData({ ...cardData, cardHolder: e.target.value.toUpperCase() });
-                    if (errors.cardHolder) setErrors({ ...errors, cardHolder: "" });
-                  }}
-                  className={`w-full bg-white px-4 py-3 border-2 border-black font-mono uppercase text-base focus:outline-none focus:bg-cyan-50/50 shadow-brutal-sm transition-all ${
-                    errors.cardHolder ? "border-tertiary-red bg-red-50" : ""
-                  }`}
-                />
-                {errors.cardHolder && (
-                  <span className="text-tertiary-red font-mono text-xs font-bold mt-1 block">
-                    {errors.cardHolder}
-                  </span>
-                )}
-              </div>
-
-              {/* Validade & CVV */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                    VALIDADE (MM/AA) *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="MM/AA"
-                    maxLength={5}
-                    value={cardData.expiryDate}
-                    onChange={(e) => {
-                      setCardData({ ...cardData, expiryDate: formatExpiryDate(e.target.value) });
-                      if (errors.expiryDate) setErrors({ ...errors, expiryDate: "" });
-                    }}
-                    className={`w-full bg-white px-4 py-3 border-2 border-black font-mono text-base text-center focus:outline-none focus:bg-cyan-50/50 shadow-brutal-sm transition-all ${
-                      errors.expiryDate ? "border-tertiary-red bg-red-50" : ""
-                    }`}
-                  />
-                  {errors.expiryDate && (
-                    <span className="text-tertiary-red font-mono text-xs font-bold mt-1 block">
-                      {errors.expiryDate}
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                    CVV (CÓDIGO) *
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="123"
-                    maxLength={4}
-                    value={cardData.cvv}
-                    onChange={(e) => {
-                      setCardData({ ...cardData, cvv: e.target.value.replace(/\D/g, "") });
-                      if (errors.cvv) setErrors({ ...errors, cvv: "" });
-                    }}
-                    className={`w-full bg-white px-4 py-3 border-2 border-black font-mono text-base text-center focus:outline-none focus:bg-cyan-50/50 shadow-brutal-sm transition-all ${
-                      errors.cvv ? "border-tertiary-red bg-red-50" : ""
-                    }`}
-                  />
-                  {errors.cvv && (
-                    <span className="text-tertiary-red font-mono text-xs font-bold mt-1 block">
-                      {errors.cvv}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Tipo de Cartão e Condição à Vista */}
-              <div className="space-y-3 pt-1">
-                <div>
-                  <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-2">
-                    FUNÇÃO DO CARTÃO *
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCardData({ ...cardData, cardType: "CREDITO", installments: "1" })}
-                      className={`py-3 px-3 border-2 border-black font-mono font-bold text-sm uppercase transition-all shadow-brutal-sm ${
-                        cardData.cardType === "CREDITO"
-                          ? "bg-primary-deep text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      CRÉDITO (À VISTA)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCardData({ ...cardData, cardType: "DEBITO", installments: "1" })}
-                      className={`py-3 px-3 border-2 border-black font-mono font-bold text-sm uppercase transition-all shadow-brutal-sm ${
-                        cardData.cardType === "DEBITO"
-                          ? "bg-primary-deep text-white"
-                          : "bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      DÉBITO (À VISTA)
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-mono font-bold text-xs uppercase tracking-wider text-gray-700 mb-1">
-                    CONDIÇÃO DE PAGAMENTO *
-                  </label>
-                  <div className="w-full bg-gray-100 px-4 py-3 border-2 border-black font-mono text-sm font-bold text-gray-800 shadow-brutal-sm flex items-center justify-between">
-                    <span>Pagamento à vista (Sem parcelamento)</span>
-                    <span className="text-primary-deep">1x de R$ {totalAmount.toFixed(2).replace(".", ",")}</span>
-                  </div>
-                </div>
+                <span className="block font-display font-black text-base text-black">PIX (Mercado Pago)</span>
+                <span className="block font-mono text-[11px] text-gray-600 uppercase">Processamento instantâneo e seguro</span>
               </div>
             </div>
-          )}
+            <span className="bg-green-100 text-green-800 border border-green-300 font-mono font-bold text-[10px] px-2 py-1 rounded">
+              ATIVO
+            </span>
+          </div>
 
           {/* Charity Banner matching screenshot */}
           <div className="mt-4 bg-[#1e1e1e] text-white py-2 px-4 text-center font-mono font-bold text-xs uppercase tracking-widest border-2 border-black -rotate-1 shadow-sm">
