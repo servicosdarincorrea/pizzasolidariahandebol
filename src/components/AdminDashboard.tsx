@@ -33,8 +33,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [newUserPassword, setNewUserPassword] = useState("");
 
   const [config, setConfig] = useState<IntegrationConfig>({
-    googleSheetsWebhookUrl: "",
-    googleSpreadsheetId: "1-exemplo-planilha-solidaria-handebol-2026",
+    googleSheetsWebhookUrl: "https://script.google.com/macros/s/AKfycbws83fNFaGtVROVKu8Rf9Oy0IuBt4wggFTLno2i0mKKI3zwoaLwGr-bdbG1N1DzZhfO/exec",
+    googleSpreadsheetId: "1kpdpXdw--duOxjuw61EoAQS30FG_uYJeyhc-cy7Eny0",
     autoSyncEnabled: true,
     mercadoPagoAccessToken: "APP_USR-sandbox-test-key",
     mercadoPagoPublicKey: "TEST-pub-key-123",
@@ -58,7 +58,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [createdSheetInfo, setCreatedSheetInfo] = useState<{ spreadsheetId: string; spreadsheetUrl: string } | null>(() => {
     const saved = localStorage.getItem("av_google_sheet_info");
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.spreadsheetId && parsed.spreadsheetId !== "1-exemplo-planilha-solidaria-handebol-2026") {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return {
+      spreadsheetId: "1kpdpXdw--duOxjuw61EoAQS30FG_uYJeyhc-cy7Eny0",
+      spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1kpdpXdw--duOxjuw61EoAQS30FG_uYJeyhc-cy7Eny0/edit"
+    };
   });
 
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
@@ -311,6 +322,8 @@ function onEditTrigger(e) {
       if (res.ok) {
         setRestrictedUsers(updatedUsers);
         alert("Lista de usuários atualizada com sucesso na planilha Google Sheets!");
+        // Auto synchronization of users
+        await fetchUsers();
       } else {
         alert("Erro ao salvar usuários: " + data.error);
       }
@@ -1953,9 +1966,6 @@ function onEditTrigger(e) {
                 <h2 className="font-display font-black text-xl text-black uppercase">
                   USUÁRIOS COM ACESSO À ÁREA RESTRITA
                 </h2>
-                <p className="text-xs text-gray-600 font-sans">
-                  Gerencie as credenciais de quem pode acessar o painel administrativo. Os usuários cadastrados são sincronizados em tempo real na aba <strong>"Usuarios"</strong> da sua planilha do Google Sheets.
-                </p>
               </div>
             </div>
 
@@ -2029,11 +2039,12 @@ function onEditTrigger(e) {
 
                 <div className="flex justify-end pt-1">
                   <button
+                    id="btn-add-authorized-user"
                     type="submit"
                     disabled={savingUsers}
                     className="bg-black text-white hover:bg-gray-800 px-4 py-2 rounded font-mono font-bold text-xs uppercase border-2 border-black transition-all"
                   >
-                    {savingUsers ? "Gravando na Planilha..." : "ADICIONAR & SINCRONIZAR"}
+                    {savingUsers ? "Gravando na Planilha..." : "ADICIONAR"}
                   </button>
                 </div>
               </form>
@@ -2041,9 +2052,23 @@ function onEditTrigger(e) {
 
             {/* Tabela de Usuários Atuais */}
             <div className="space-y-3">
-              <h3 className="font-mono font-bold text-xs uppercase text-black">
-                👥 USUÁRIOS DETECTADOS ({restrictedUsers.length})
-              </h3>
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <h3 className="font-mono font-bold text-xs uppercase text-black">
+                  👥 USUÁRIOS DETECTADOS ({restrictedUsers.length})
+                </h3>
+                {createdSheetInfo && (
+                  <button
+                    id="btn-sync-authorized-users"
+                    type="button"
+                    onClick={fetchUsers}
+                    disabled={loadingUsers}
+                    className="flex items-center gap-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 px-3 py-1.5 rounded font-mono font-bold text-[11px] uppercase border-2 border-black transition-all shadow-brutal-xs active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingUsers ? 'animate-spin' : ''}`} />
+                    {loadingUsers ? "Sincronizando..." : "Sincronizar Usuários"}
+                  </button>
+                )}
+              </div>
 
               {loadingUsers ? (
                 <div className="text-center py-6 font-mono text-xs text-gray-500">

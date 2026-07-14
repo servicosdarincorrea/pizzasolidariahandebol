@@ -93,8 +93,8 @@ function saveUsers(users: any[]) {
 // Helper to load/save integration config
 function getConfig() {
   const defaults = {
-    googleSheetsWebhookUrl: "",
-    googleSpreadsheetId: "1-exemplo-planilha-solidaria-handebol-2026",
+    googleSheetsWebhookUrl: "https://script.google.com/macros/s/AKfycbws83fNFaGtVROVKu8Rf9Oy0IuBt4wggFTLno2i0mKKI3zwoaLwGr-bdbG1N1DzZhfO/exec",
+    googleSpreadsheetId: "1kpdpXdw--duOxjuw61EoAQS30FG_uYJeyhc-cy7Eny0",
     autoSyncEnabled: true,
     mercadoPagoAccessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || "APP_USR-sandbox-test-key",
     mercadoPagoPublicKey: process.env.MERCADOPAGO_PUBLIC_KEY || "TEST-pub-key-123",
@@ -108,7 +108,14 @@ function getConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-      return { ...defaults, ...saved };
+      const merged = { ...defaults, ...saved };
+      if (merged.googleSpreadsheetId === "1-exemplo-planilha-solidaria-handebol-2026") {
+        merged.googleSpreadsheetId = "1kpdpXdw--duOxjuw61EoAQS30FG_uYJeyhc-cy7Eny0";
+      }
+      if (!merged.googleSheetsWebhookUrl) {
+        merged.googleSheetsWebhookUrl = "https://script.google.com/macros/s/AKfycbws83fNFaGtVROVKu8Rf9Oy0IuBt4wggFTLno2i0mKKI3zwoaLwGr-bdbG1N1DzZhfO/exec";
+      }
+      return merged;
     }
   } catch (e) {}
   return defaults;
@@ -771,7 +778,7 @@ app.post("/api/notify/send", async (req, res) => {
             
             <div style="padding: 25px; color: #333; line-height: 1.6;">
               <h2 style="margin-top: 0; color: #0d2149;">Pedido Confirmado com Sucesso!</h2>
-              <p>Olá, <strong>${order.customerName}</strong>! Obrigado por apoiar nossos atletas do time de Handebol <strong>HandVida</strong>. Sua ajuda é fundamental para que eles alcancem novas competições!</p>
+              <p>Olá, <strong>${order.customerName}</strong>! Obrigado por apoiar nossos atletas do time de Handebol <strong>HandVIDA</strong>. Sua ajuda é fundamental para que eles alcancem novas competições!</p>
               
               <div style="background-color: #f3f4f6; border-left: 4px solid #0d2149; padding: 15px; margin: 20px 0; border-radius: 4px;">
                 <p style="margin: 0; font-size: 12px; color: #6b7280; font-weight: bold; text-transform: uppercase;">Código do Pedido</p>
@@ -825,7 +832,7 @@ app.post("/api/notify/send", async (req, res) => {
 
               <div style="border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #6b7280; text-align: center;">
                 <p style="margin: 0;">Este é um e-mail automático enviado em nome do Colégio Água Viva.</p>
-                <p style="margin: 5px 0 0 0;">Parceiro do time de Handebol HandVida. 100% da renda será revertida.</p>
+                <p style="margin: 5px 0 0 0;">Parceiro do time de Handebol HandVIDA. 100% da renda será revertida para o Colégio Água Viva.</p>
               </div>
             </div>
           </div>

@@ -45,10 +45,7 @@ export const PizzaCatalog: React.FC<PizzaCatalogProps> = ({ cart, onUpdateQuanti
       {/* Campaign Flavors Notice */}
       <div className="bg-cyan-50 border-2 border-black p-3 rounded mb-6 flex items-center justify-between gap-2 shadow-brutal-sm">
         <span className="font-mono font-bold text-xs uppercase text-primary-deep">
-          🍕 SABORES OFICIAIS DA CAMPANHA: MUÇARELA E CALABRESA
-        </span>
-        <span className="bg-black text-white px-2.5 py-0.5 rounded text-[11px] font-mono font-bold">
-          2 SABORES
+          🍕 SABORES OFICIAIS DA CAMPANHA: MUSSARELA E CALABRESA
         </span>
       </div>
 

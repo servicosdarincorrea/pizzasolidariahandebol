@@ -3,10 +3,10 @@ import { PizzaItem } from "../types";
 export const PIZZAS_CATALOG: PizzaItem[] = [
   {
     id: "mucarela",
-    name: "Muçarela",
+    name: "Mussarela",
     price: 0.05,
     category: "SALGADA",
-    description: "Molho de tomate artesanal, muçarela derretida, uma azeitona preta por pedaço e toque de orégano.",
+    description: "Molho de tomate, mussarela, azeitona e toque de orégano.",
     image: "/mussarela.png"
   },
   {
@@ -14,7 +14,7 @@ export const PIZZAS_CATALOG: PizzaItem[] = [
     name: "Calabresa",
     price: 0.05,
     category: "SALGADA",
-    description: "Molho de tomate fresco, fatias de calabresa defumada selecionada, anéis de cebola crua e orégano.",
+    description: "Molho de tomate, fatias de calabresa, anéis de cebola e orégano.",
     image: "/calabresa.png"
   }
 ];
