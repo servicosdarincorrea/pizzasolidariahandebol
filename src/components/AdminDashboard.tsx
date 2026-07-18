@@ -5,7 +5,7 @@ import {
   Lock, Key, RefreshCw, Download, FileSpreadsheet, CheckCircle, 
   Clock, Search, DollarSign, ShoppingBag, Users, ExternalLink, 
   Mail, MessageCircle, Sliders, ShieldAlert, ArrowLeft, Trash2,
-  HelpCircle, Copy, Check, Code
+  HelpCircle, Copy, Check, Code, HardDrive
 } from "lucide-react";
 
 interface AdminDashboardProps {
@@ -76,6 +76,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
   const [showRetrieveConfirm, setShowRetrieveConfirm] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
+
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupResult, setBackupResult] = useState<{ success: boolean; fileName?: string; fileId?: string; error?: string } | null>(null);
+  const [showBackupConfirm, setShowBackupConfirm] = useState(false);
 
   const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState(true);
   const [lastAutoSyncTime, setLastAutoSyncTime] = useState<Date | null>(null);
@@ -660,6 +664,63 @@ function onEditTrigger(e) {
         );
       }
       setSyncStatus("");
+    }
+  };
+
+  const handleBackupToGoogleDrive = async (bypassConfirm = false) => {
+    if (!googleToken) {
+      setSheetError("Por favor, clique em 'Conectar Google Sheets' primeiro para autenticar!");
+      return;
+    }
+    if (bypassConfirm !== true) {
+      setShowBackupConfirm(true);
+      return;
+    }
+    setShowBackupConfirm(false);
+    setBackupResult(null);
+    setIsBackingUp(true);
+    setSyncStatus("Preparando backup e compactando arquivos...");
+
+    try {
+      const res = await fetch("/api/drive/backup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${googleToken}`
+        }
+      });
+
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        // Extract title or body from HTML if possible
+        const titleMatch = text.match(/<title>(.*?)<\/title>/i);
+        const errorMsg = titleMatch ? titleMatch[1] : "Erro de servidor (HTML retornado)";
+        throw new Error(`${errorMsg} (${res.status})`);
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro desconhecido ao processar backup.");
+      }
+
+      setBackupResult({
+        success: true,
+        fileName: data.fileName,
+        fileId: data.fileId
+      });
+      setSyncStatus("🎉 Backup enviado ao Google Drive com sucesso!");
+    } catch (err: any) {
+      console.error(err);
+      setBackupResult({
+        success: false,
+        error: err.message || "Erro na conexão com o servidor."
+      });
+      setSyncStatus("❌ Falha ao enviar o backup.");
+    } finally {
+      setIsBackingUp(false);
     }
   };
 
@@ -1515,7 +1576,62 @@ function onEditTrigger(e) {
                   </div>
                 )}
 
-                {!showCreateConfirm && !showSyncConfirm && !showRetrieveConfirm && (
+                {showBackupConfirm && (
+                  <div className="bg-amber-50 border-2 border-black p-4 rounded space-y-3 shadow-sm">
+                    <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase">
+                      <HelpCircle className="w-5 h-5 text-amber-600" />
+                      <span>Confirmar Backup para Google Drive?</span>
+                    </div>
+                    <p className="text-xs text-gray-700 leading-relaxed">
+                      Isso criará uma cópia de segurança completa de todos os arquivos de código-fonte e banco de dados do site (compactados em formato <strong className="text-black">.tar.gz</strong>) e fará o upload diretamente para a sua conta do Google Drive.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleBackupToGoogleDrive(true)}
+                        className="bg-green-600 hover:bg-green-700 text-white font-mono font-bold text-xs px-4 py-2 rounded border-2 border-black shadow-sm"
+                      >
+                        Sim, Fazer Backup
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowBackupConfirm(false)}
+                        className="bg-white hover:bg-gray-100 text-black font-mono text-xs px-4 py-2 rounded border border-black"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {backupResult && (
+                  <div className={`border-2 border-black p-4 rounded space-y-2 shadow-sm ${backupResult.success ? "bg-green-50 text-green-900" : "bg-red-50 text-red-900"}`}>
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase">
+                      {backupResult.success ? <CheckCircle className="w-5 h-5 text-green-600" /> : <ShieldAlert className="w-5 h-5 text-red-600" />}
+                      <span>{backupResult.success ? "Backup Concluído!" : "Erro ao Fazer Backup"}</span>
+                    </div>
+                    {backupResult.success ? (
+                      <div className="text-xs space-y-1">
+                        <p>O backup do seu site foi enviado com sucesso para o seu Google Drive.</p>
+                        <p className="font-mono text-[11px] bg-white/50 p-2 rounded border border-green-100 leading-relaxed">
+                          <strong>Arquivo:</strong> {backupResult.fileName}<br/>
+                          <strong>ID no Drive:</strong> {backupResult.fileId}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs font-mono text-[11px] bg-white/50 p-2 rounded border border-red-100 leading-relaxed">{backupResult.error}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setBackupResult(null)}
+                      className="text-[11px] underline font-semibold mt-1 block"
+                    >
+                      Fechar Aviso
+                    </button>
+                  </div>
+                )}
+
+                {!showCreateConfirm && !showSyncConfirm && !showRetrieveConfirm && !showBackupConfirm && (
                   <>
                     {!createdSheetInfo ? (
                       <div className="space-y-4">
@@ -1642,6 +1758,36 @@ function onEditTrigger(e) {
                         )}
                       </div>
                     )}
+
+                    {/* CARD DE BACKUP GOOGLE DRIVE */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-black p-5 rounded shadow-brutal space-y-3 mt-4">
+                      <div className="flex items-start gap-3">
+                        <HardDrive className="w-8 h-8 text-blue-600 shrink-0" />
+                        <div>
+                          <span className="bg-blue-700 text-white font-mono text-[10px] font-bold px-2 py-0.5 rounded uppercase border border-black inline-block mb-1">
+                            📦 Segurança do Código
+                          </span>
+                          <h3 className="font-display font-black text-base text-black">
+                            Backup Completo do Site no Google Drive
+                          </h3>
+                          <p className="text-xs text-gray-700 leading-relaxed mt-1">
+                            Crie instantaneamente uma cópia de segurança completa (.tar.gz) de todos os arquivos de código-fonte, configurações e banco de dados local do seu site e salve-a na sua conta do Google Drive com total segurança antes de migrar.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 flex justify-start">
+                        <button
+                          type="button"
+                          disabled={isBackingUp}
+                          onClick={() => handleBackupToGoogleDrive()}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-mono font-bold text-xs uppercase px-5 py-2.5 rounded border-2 border-black shadow-brutal-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${isBackingUp ? "animate-spin" : ""}`} />
+                          <span>{isBackingUp ? "Criando e Enviando Backup..." : "🚀 Salvar Backup do Site no Google Drive"}</span>
+                        </button>
+                      </div>
+                    </div>
                   </>
                 )}
               </div>

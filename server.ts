@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { exec } from "child_process";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
 
@@ -21,10 +22,35 @@ app.use((req, res, next) => {
 });
 
 // Ensure data folder exists
-const DATA_DIR = path.join(process.cwd(), "data");
+const isNetlify = !!process.env.NETLIFY || !!process.env.NETLIFY_DEV;
+const DATA_DIR = isNetlify ? path.join("/tmp", "data") : path.join(process.cwd(), "data");
+const ORIGINAL_DATA_DIR = path.join(process.cwd(), "data");
+
 if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    console.error("Erro ao criar DATA_DIR:", e);
+  }
 }
+
+// On Netlify, copy any existing data files from read-only project bundle to writable /tmp/data
+if (isNetlify && fs.existsSync(ORIGINAL_DATA_DIR)) {
+  try {
+    const files = fs.readdirSync(ORIGINAL_DATA_DIR);
+    for (const file of files) {
+      const srcPath = path.join(ORIGINAL_DATA_DIR, file);
+      const destPath = path.join(DATA_DIR, file);
+      if (!fs.existsSync(destPath) && fs.statSync(srcPath).isFile()) {
+        fs.copyFileSync(srcPath, destPath);
+        console.log(`Copiado ${file} para diretório temporário gravável: ${destPath}`);
+      }
+    }
+  } catch (err) {
+    console.error("Erro ao copiar arquivos originais para /tmp/data:", err);
+  }
+}
+
 const ORDERS_FILE = path.join(DATA_DIR, "orders.json");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 
@@ -917,6 +943,111 @@ app.post("/api/sheets/import", (req, res) => {
   }
 });
 
+// Drive Backup Endpoint - Zips the site codebase and uploads to Google Drive using the active user's accessToken
+app.post("/api/drive/backup", async (req, res) => {
+  try {
+    const config = getConfig();
+    const authHeader = req.headers.authorization;
+    let accessToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
+    
+    if (!accessToken) {
+      accessToken = req.body.token || config.googleAccessToken;
+    }
+
+    if (!accessToken) {
+      return res.status(401).json({ error: "Não autorizado. Conecte-se ao Google primeiro." });
+    }
+
+    const filePath = "/tmp/backup_pizza_solidaria.tar.gz";
+
+    // Create tarball excluding node_modules, dist, and .git directories
+    exec('tar -czf /tmp/backup_pizza_solidaria.tar.gz --exclude="node_modules" --exclude="dist" --exclude=".git" .', async (error, stdout, stderr) => {
+      if (error) {
+        console.error("Erro ao criar tarball de backup:", error);
+        return res.status(500).json({ error: `Falha ao empacotar os arquivos: ${error.message}` });
+      }
+
+      try {
+        if (!fs.existsSync(filePath)) {
+          return res.status(500).json({ error: "Arquivo de backup não foi gerado pelo sistema." });
+        }
+
+        const fileBuffer = fs.readFileSync(filePath);
+        const dateStr = new Date().toISOString().split("T")[0];
+        const randomStr = Math.floor(1000 + Math.random() * 9000);
+        const fileName = `backup_pizza_solidaria_${dateStr}_${randomStr}.tar.gz`;
+
+        const boundary = "backup_multipart_boundary";
+        const metadata = JSON.stringify({
+          name: fileName,
+          mimeType: "application/gzip",
+          description: `Backup do código-fonte e banco de dados do site Pizza Solidária feito em ${new Date().toLocaleString("pt-BR")}`,
+        });
+
+        const metadataPart = [
+          `--${boundary}\r\n`,
+          "Content-Type: application/json; charset=UTF-8\r\n\r\n",
+          `${metadata}\r\n`
+        ].join("");
+
+        const mediaPartHeader = [
+          `--${boundary}\r\n`,
+          "Content-Type: application/gzip\r\n\r\n"
+        ].join("");
+
+        const mediaPartFooter = `\r\n--${boundary}--`;
+
+        const bodyBuffer = Buffer.concat([
+          Buffer.from(metadataPart, "utf-8"),
+          Buffer.from(mediaPartHeader, "utf-8"),
+          fileBuffer,
+          Buffer.from(mediaPartFooter, "utf-8")
+        ]);
+
+        const driveRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": `multipart/related; boundary=${boundary}`,
+            "Content-Length": String(bodyBuffer.length),
+          },
+          body: bodyBuffer,
+        });
+
+        // Safe cleanup of temporary file
+        try {
+          fs.unlinkSync(filePath);
+        } catch (cleanupErr) {
+          console.error("Erro ao limpar arquivo temporário:", cleanupErr);
+        }
+
+        if (!driveRes.ok) {
+          const errText = await driveRes.text();
+          console.error("Erro no upload para o Google Drive:", errText);
+          return res.status(driveRes.status).json({ error: `Erro na API do Google Drive: ${errText}` });
+        }
+
+        const driveData = await driveRes.json();
+        return res.json({ 
+          success: true, 
+          fileName, 
+          fileId: driveData.id,
+          message: "Backup criado e enviado ao Google Drive com sucesso!" 
+        });
+      } catch (err: any) {
+        if (fs.existsSync(filePath)) {
+          try { fs.unlinkSync(filePath); } catch (e) {}
+        }
+        console.error("Erro no processamento do backup:", err);
+        return res.status(500).json({ error: err.message });
+      }
+    });
+  } catch (err: any) {
+    console.error("Erro geral no endpoint de backup:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Admin Login checking against static list or live Google Sheets list
 app.post("/api/admin/login", async (req, res) => {
   try {
@@ -1181,4 +1312,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.NETLIFY && !process.env.NETLIFY_DEV) {
+  startServer();
+}
+
+export { app };
